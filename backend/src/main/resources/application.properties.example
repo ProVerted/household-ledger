@@ -1,0 +1,20 @@
+spring.application.name=household-trip-ledger
+
+# --- Database ---
+# Update these to match your local Postgres instance.
+spring.datasource.url=jdbc:postgresql://localhost:5432/household_ledger
+spring.datasource.username=postgres
+spring.datasource.password=postgres
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# --- JWT ---
+# 256-bit base64 secret. Replace with your own generated secret before real use.
+# Generate one with PowerShell (see README) or: openssl rand -base64 32
+app.jwt.secret=REPLACE_WITH_YOUR_OWN_GENERATED_SECRET
+app.jwt.access-token-expiration-ms=900000
+app.jwt.refresh-token-expiration-ms=604800000
+
+server.port=8080

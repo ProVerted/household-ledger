@@ -1,0 +1,19 @@
+# --- Backend (Maven / Spring Boot) ---
+backend/target/
+backend/src/main/resources/application.properties
+!backend/src/main/resources/application.properties.example
+*.class
+*.log
+
+# --- Frontend (Angular / Node) ---
+frontend-app/node_modules/
+frontend-app/dist/
+frontend-app/.angular/
+npm-debug.log*
+
+# --- IDE / OS ---
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
