@@ -48,12 +48,49 @@
         <li
           class="group-item"
           [class.active]="groupContext.activeGroup()?.id === group.id"
-          (click)="selectGroup(group.id)"
         >
-          <span class="group-name">{{ group.name }}</span>
-          <span class="group-meta">{{ group.type }} · {{ group.currency }} · {{ group.myRole }}</span>
-          @if (groupContext.activeGroup()?.id === group.id) {
-            <span class="active-badge">Active</span>
+          <div (click)="selectGroup(group.id)">
+            <span class="group-name">{{ group.name }}</span>
+            <span class="group-meta">{{ group.type }} · {{ group.currency }} · {{ group.myRole }}</span>
+            @if (groupContext.activeGroup()?.id === group.id) {
+              <span class="active-badge">Active</span>
+            }
+          </div>
+
+          <button type="button" (click)="toggleMembers(group.id)">
+            {{ expandedGroupId() === group.id ? 'Hide Members' : 'Manage Members' }}
+          </button>
+
+          @if (expandedGroupId() === group.id) {
+            <div class="members-panel">
+              @if (isLoadingMembers()) {
+                <p>Loading members...</p>
+              } @else {
+                <ul class="member-list">
+                  @for (member of members(); track member.userId) {
+                    <li>{{ member.name }} ({{ member.email }}) - {{ member.role }}</li>
+                  }
+                </ul>
+              }
+
+              @if (group.myRole === 'OWNER' || group.myRole === 'TREASURER') {
+                <form [formGroup]="addMemberForm" (ngSubmit)="onAddMember(group.id)" class="add-member-form">
+                  <input
+                    type="email"
+                    formControlName="email"
+                    placeholder="Member's email (they must already have an account)"
+                  />
+                  <button type="submit" [disabled]="isAddingMember()">
+                    {{ isAddingMember() ? 'Adding...' : 'Add' }}
+                  </button>
+                </form>
+                @if (memberErrorMessage()) {
+                  <div class="form-error">{{ memberErrorMessage() }}</div>
+                }
+              } @else {
+                <p><em>Only the owner or treasurer can add members.</em></p>
+              }
+            </div>
           }
         </li>
       }

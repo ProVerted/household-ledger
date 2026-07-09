@@ -5,7 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { GroupService } from '../../../core/services/group.service';
 import { GroupContextService } from '../../../core/services/group-context.service';
-import { GroupType } from '../../../core/models/group.model';
+import { GroupType, MembershipResponse } from '../../../core/models/group.model';
 
 @Component({
   selector: 'app-group-list',
@@ -23,12 +23,23 @@ export class GroupListComponent implements OnInit {
   readonly errorMessage = signal<string | null>(null);
   readonly showCreateForm = signal(false);
 
+  // Member management for whichever group is currently expanded.
+  readonly expandedGroupId = signal<number | null>(null);
+  readonly members = signal<MembershipResponse[]>([]);
+  readonly isLoadingMembers = signal(false);
+  readonly isAddingMember = signal(false);
+  readonly memberErrorMessage = signal<string | null>(null);
+
   readonly createForm = this.fb.group({
     name: ['', [Validators.required]],
     type: ['HOUSEHOLD' as GroupType, [Validators.required]],
     currency: ['USD', [Validators.required, Validators.minLength(3), Validators.maxLength(3)]],
     startDate: [''],
     endDate: [''],
+  });
+
+  readonly addMemberForm = this.fb.group({
+    email: ['', [Validators.required, Validators.email]],
   });
 
   ngOnInit(): void {
@@ -51,6 +62,57 @@ export class GroupListComponent implements OnInit {
 
   selectGroup(groupId: number): void {
     this.groupContext.setActiveGroup(groupId);
+  }
+
+  toggleMembers(groupId: number): void {
+    if (this.expandedGroupId() === groupId) {
+      this.expandedGroupId.set(null);
+      return;
+    }
+    this.expandedGroupId.set(groupId);
+    this.memberErrorMessage.set(null);
+    this.addMemberForm.reset();
+    this.loadMembers(groupId);
+  }
+
+  loadMembers(groupId: number): void {
+    this.isLoadingMembers.set(true);
+    this.groupService.getMembers(groupId).subscribe({
+      next: (members) => {
+        this.members.set(members);
+        this.isLoadingMembers.set(false);
+      },
+      error: () => {
+        this.memberErrorMessage.set('Could not load members.');
+        this.isLoadingMembers.set(false);
+      },
+    });
+  }
+
+  onAddMember(groupId: number): void {
+    if (this.addMemberForm.invalid) {
+      this.addMemberForm.markAllAsTouched();
+      return;
+    }
+
+    this.isAddingMember.set(true);
+    this.memberErrorMessage.set(null);
+
+    const email = this.addMemberForm.getRawValue().email!;
+
+    this.groupService.addMember(groupId, { email }).subscribe({
+      next: () => {
+        this.isAddingMember.set(false);
+        this.addMemberForm.reset();
+        this.loadMembers(groupId);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.isAddingMember.set(false);
+        this.memberErrorMessage.set(
+          err.error?.message ?? 'Could not add member. Make sure they have an account already.'
+        );
+      },
+    });
   }
 
   toggleCreateForm(): void {

@@ -23,6 +23,7 @@ import { GroupService } from '../../core/services/group.service';
       }
 
       <p><a routerLink="/groups">Manage / switch groups</a></p>
+      <p><a routerLink="/expenses">View expenses</a></p>
 
       <button (click)="logout()">Log Out</button>
     </div>

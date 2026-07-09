@@ -78,3 +78,96 @@ and get redirected to the guarded `/dashboard` route.
 
 ## Next: Phase 2
 Group + GroupMembership entities, the `GroupContextFilter`, and the group switcher UI.
+
+---
+
+# Phase 2 (Groups & Membership)
+
+## New backend pieces
+- `Group` + `GroupMembership` entities (table names: `app_group`, `group_membership` -
+  `GROUP` is a reserved SQL keyword, hence `app_group`)
+- `GroupContextFilter`: reads `/api/groups/{id}/...` from the URL, verifies the
+  authenticated user has an **active** membership in that group, and populates a
+  request-scoped `GroupContext` bean. Services read the group id from `GroupContext`,
+  not from a client-trusted path variable, once past the filter.
+- `GroupService` / `GroupController`: create group, list "my groups", add member
+  (OWNER/TREASURER only), leave group (deactivates membership rather than deleting it)
+
+## New endpoints to test manually
+```bash
+# Create a household (replace TOKEN with your accessToken from login)
+curl -X POST http://localhost:8080/api/groups \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"name":"Flat 4B","type":"HOUSEHOLD","currency":"USD"}'
+
+# List your groups
+curl http://localhost:8080/api/groups/mine -H "Authorization: Bearer TOKEN"
+
+# Add a member (use the group id returned above)
+curl -X POST http://localhost:8080/api/groups/1/members \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"email":"otheruser@example.com"}'
+```
+
+## Frontend checklist
+1. Log in -> dashboard shows "You don't have an active group yet."
+2. Click "Manage / switch groups" -> `/groups` page loads (empty state).
+3. Click "+ New Group", create a Household -> appears in the list, auto-selected as Active.
+4. Create a second group (a Trip, with start/end dates) -> both show in the list;
+   clicking one switches which is "Active" instantly (Signal-driven, no page reload).
+5. Go back to dashboard -> active group summary reflects whichever you last selected.
+6. Log out and back in as the same user -> active group selection persists (localStorage).
+
+## Worth understanding before Phase 3
+Try hitting an endpoint like `GET /api/groups/999/members` with a group id you're not
+a member of (or that doesn't exist) - you should get a 403, not a 500 or a data leak.
+That's `GroupContextFilter` doing its job. This is the mechanism Phase 3's expense
+endpoints will sit behind too.
+
+## Next: Phase 3
+Expense + ExpenseSplit entities, optimistic locking, and the dynamic split UI.
+
+---
+
+# Phase 3 (Expenses & Splits)
+
+## New backend pieces
+- `Expense` entity with `@Version` for optimistic locking, and `ExpenseSplit` for
+  the per-member breakdown
+- `SplitCalculationService`: the actual split-type logic
+  - **EQUAL**: divides evenly, then distributes leftover cents one-by-one across
+    the first N people so the splits always sum exactly to the total (naive division
+    alone leaves rounding errors)
+  - **PERCENTAGE**: validates percentages sum to 100, computes each share, and lets
+    the last split absorb any rounding remainder so the total is exact
+  - **EXACT**: validates the exact amounts sum to the expense total
+- `ExpenseService.updateExpense`: checks the client-supplied `version` against the
+  stored one and returns a clean 409 Conflict if they don't match, instead of
+  silently overwriting someone else's edit or leaking a raw persistence exception
+
+## Manual test: prove optimistic locking actually works
+This is worth doing once, since it's the whole point of Phase 3's hardest piece:
+1. `GET /api/groups/{groupId}/expenses/{expenseId}` twice, in two separate tabs/tools
+   (e.g. Postman) - note the `version` field is the same in both (e.g. `0`)
+2. `PATCH` using the first response's version - succeeds, version is now `1`
+3. `PATCH` again using the *first* (now-stale) version `0` - should get a 409, not
+   a silent overwrite
+
+## Frontend checklist
+1. From the dashboard, click "View expenses" -> empty state for a new group.
+2. Click "+ New Expense", fill in description/amount/date, leave Split Type as
+   "Equal" -> submit -> appears in the list with an equal split shown per member.
+3. Create another expense, switch Split Type to "Percentage" -> percentage inputs
+   appear per member. Try submitting with percentages that don't sum to 100 ->
+   should show the inline mismatch error and NOT submit.
+4. Fix the percentages to sum to 100 -> submits successfully.
+5. Try "Exact" split type with amounts that don't match the total -> same inline
+   validation behavior.
+6. Uncheck everyone -> "select at least one person" error appears.
+
+## Next: Phase 4
+Balance calculation + the greedy debt-settlement algorithm - the "wow" feature.
+
+

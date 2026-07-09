@@ -1,0 +1,46 @@
+<div class="expense-list-container">
+  <div class="expense-list-header">
+    <h1>Expenses</h1>
+    <a routerLink="/expenses/new">+ New Expense</a>
+  </div>
+
+  @if (!groupContext.activeGroup()) {
+    <p>No active group selected. <a routerLink="/groups">Choose a group</a>.</p>
+  } @else {
+    <p>Group: <strong>{{ groupContext.activeGroup()?.name }}</strong></p>
+
+    @if (isLoading()) {
+      <p>Loading expenses...</p>
+    } @else if (errorMessage()) {
+      <p class="form-error">{{ errorMessage() }}</p>
+    } @else if (expenses().length === 0) {
+      <p>No expenses yet for this group.</p>
+    } @else {
+      <ul class="expense-list">
+        @for (expense of expenses(); track expense.id) {
+          <li class="expense-item">
+            <div class="expense-main">
+              <span class="expense-description">{{ expense.description }}</span>
+              <span class="expense-amount">{{ expense.currency }} {{ expense.amount }}</span>
+            </div>
+            <div class="expense-meta">
+              Paid by {{ expense.paidByName }} on {{ expense.expenseDate }} · {{ expense.splitType }} split
+            </div>
+            <div class="expense-splits">
+              @for (split of expense.splits; track split.userId) {
+                <span class="split-chip">
+                  {{ split.name }}: {{ expense.currency }} {{ split.shareAmount }}
+                  @if (split.sharePercentage) {
+                    ({{ split.sharePercentage }}%)
+                  }
+                </span>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  }
+
+  <p><a routerLink="/dashboard">Back to dashboard</a></p>
+</div>

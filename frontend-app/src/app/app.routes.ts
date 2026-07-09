@@ -25,5 +25,17 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/groups/group-list/group-list.component').then((m) => m.GroupListComponent),
   },
+  {
+    path: 'expenses',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/expenses/expense-list/expense-list.component').then((m) => m.ExpenseListComponent),
+  },
+  {
+    path: 'expenses/new',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/expenses/expense-form/expense-form.component').then((m) => m.ExpenseFormComponent),
+  },
   { path: '**', redirectTo: 'login' },
 ];
