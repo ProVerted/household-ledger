@@ -1,0 +1,78 @@
+<div class="balance-container">
+  <h1>Balances &amp; Settlements</h1>
+
+  @if (!groupContext.activeGroup()) {
+    <p>No active group selected. <a routerLink="/groups">Choose a group</a>.</p>
+  } @else {
+    <p>Group: <strong>{{ groupContext.activeGroup()?.name }}</strong></p>
+
+    @if (isLoading()) {
+      <p>Calculating balances...</p>
+    } @else {
+      @if (errorMessage()) {
+        <p class="form-error">{{ errorMessage() }}</p>
+      }
+
+      <h2>Net Balances</h2>
+      @if (balances().length === 0) {
+        <p>No expenses yet - nothing to balance.</p>
+      } @else {
+        <ul class="balance-list">
+          @for (balance of balances(); track balance.userId) {
+            <li>
+              {{ balance.name }}:
+              @if (balance.netBalance > 0) {
+                <span class="positive">is owed {{ groupContext.activeGroup()?.currency }} {{ balance.netBalance }}</span>
+              } @else if (balance.netBalance < 0) {
+                <span class="negative">owes {{ groupContext.activeGroup()?.currency }} {{ -balance.netBalance }}</span>
+              } @else {
+                <span>is settled up</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+
+      <h2>Suggested Settlements</h2>
+      <p><em>The minimum number of payments needed to settle everyone up.</em></p>
+      @if (suggestions().length === 0) {
+        <p>Everyone's settled up - no payments needed.</p>
+      } @else {
+        <ul class="settlement-list">
+          @for (suggestion of suggestions(); track $index; let i = $index) {
+            <li class="settlement-row">
+              <span class="settlement-arrow">
+                {{ suggestion.fromName }} → {{ suggestion.toName }}:
+                {{ groupContext.activeGroup()?.currency }} {{ suggestion.amount }}
+              </span>
+              <button
+                type="button"
+                (click)="confirmSettlement(suggestion, i)"
+                [disabled]="confirmingIndex() === i"
+              >
+                {{ confirmingIndex() === i ? 'Confirming...' : 'Mark as Paid' }}
+              </button>
+            </li>
+          }
+        </ul>
+      }
+
+      <h2>Settlement History</h2>
+      @if (history().length === 0) {
+        <p>No confirmed settlements yet.</p>
+      } @else {
+        <ul class="history-list">
+          @for (item of history(); track item.id) {
+            <li>
+              {{ item.fromName }} → {{ item.toName }}:
+              {{ groupContext.activeGroup()?.currency }} {{ item.amount }}
+              <span class="settled-date">({{ item.settledAt | date: 'short' }})</span>
+            </li>
+          }
+        </ul>
+      }
+    }
+  }
+
+  <p><a routerLink="/dashboard">Back to dashboard</a></p>
+</div>

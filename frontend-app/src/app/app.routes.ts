@@ -37,5 +37,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/expenses/expense-form/expense-form.component').then((m) => m.ExpenseFormComponent),
   },
+  {
+    path: 'balances',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/balances/balance-summary.component').then((m) => m.BalanceSummaryComponent),
+  },
   { path: '**', redirectTo: 'login' },
 ];

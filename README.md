@@ -170,4 +170,60 @@ This is worth doing once, since it's the whole point of Phase 3's hardest piece:
 ## Next: Phase 4
 Balance calculation + the greedy debt-settlement algorithm - the "wow" feature.
 
+---
+
+# Phase 4 (Balances & Settlement Algorithm)
+
+## New backend pieces
+- `BalanceService.computeNetBalances`: sums, per member, everything they paid
+  minus everything they owe across all expenses/splits in a group. Positive =
+  the group owes them; negative = they owe the group.
+- `SettlementCalculationService.suggestSettlements`: the actual algorithm - a
+  greedy "largest creditor meets largest debtor" approach using two max-heaps
+  (`PriorityQueue`), settling the smaller of the two amounts each round. This
+  minimizes the total number of payments needed, rather than naively settling
+  every pairwise debt.
+- `SettlementTransaction` + confirm/history endpoints: recording that a suggested
+  payment actually happened is a separate concern from the balance math itself -
+  confirming a settlement does NOT change the net balances, since those reflect
+  expense history, not who's paid whom already. (Worth being able to explain this
+  distinction if asked - it's a deliberate design choice, not an oversight.)
+
+## New endpoints
+```
+GET  /api/groups/{groupId}/balances
+GET  /api/groups/{groupId}/settlements/suggested
+POST /api/groups/{groupId}/settlements/confirm
+GET  /api/groups/{groupId}/settlements/history
+```
+
+## Frontend checklist
+1. From the dashboard, click "Balances & settlements".
+2. With a few expenses already added (from Phase 3 testing) across 2+ members,
+   confirm the Net Balances section shows sensible numbers - whoever paid more
+   than their share should show "is owed", whoever paid less should show "owes".
+3. Check Suggested Settlements - with only 2 members this is trivially one line,
+   but the algorithm's value shows with 3+: try adding a third member and a few
+   more expenses with different payers, and confirm the number of suggested
+   payments stays minimal (e.g. 2 payments settling 3 people, not 3+).
+4. Click "Mark as Paid" on a suggestion -> appears in Settlement History below.
+   Refresh the page - the net balances should be unchanged (by design, per above),
+   but the history entry should persist.
+
+## The one thing worth being able to explain out loud
+Given 3 people where A is owed $30, B is owed $10, and C owes $40 total - a naive
+approach might generate 2 separate payments from C (one to A, one to B). The greedy
+algorithm here does exactly that in this case, but with more complex multi-way debts
+(4+ people, mixed credits/debits) the greedy match-largest-with-largest approach
+provably produces fewer total transactions than settling every pairwise relationship
+that technically exists on paper.
+
+## What's next
+Phases 5 and 6 from the original plan (approval workflows, recurring expenses) are
+the remaining stretch goals - by this point you have a genuinely complete, demoable
+core: auth, dynamic multi-tenancy, expense splitting with real algorithmic split
+logic, optimistic locking, and a debt-settlement algorithm. That's a strong stopping
+point if you're presenting soon, with room to keep building if you have time.
+
+
 
