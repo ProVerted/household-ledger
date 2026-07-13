@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -18,6 +19,7 @@ public class GroupResponse {
     private String currency;
     private LocalDate startDate;
     private LocalDate endDate;
+    private BigDecimal approvalThreshold;
     // The requesting user's role within this specific group -
     // this is what lets the Angular UI show/hide actions per group.
     private GroupRole myRole;

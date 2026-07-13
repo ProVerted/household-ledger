@@ -7,6 +7,7 @@ export interface CreateGroupRequest {
   currency: string;
   startDate?: string | null;
   endDate?: string | null;
+  approvalThreshold?: number | null;
 }
 
 export interface GroupResponse {
@@ -16,6 +17,7 @@ export interface GroupResponse {
   currency: string;
   startDate: string | null;
   endDate: string | null;
+  approvalThreshold: number;
   myRole: GroupRole;
 }
 

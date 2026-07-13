@@ -36,6 +36,7 @@ export class GroupListComponent implements OnInit {
     currency: ['USD', [Validators.required, Validators.minLength(3), Validators.maxLength(3)]],
     startDate: [''],
     endDate: [''],
+    approvalThreshold: [100, [Validators.min(0)]],
   });
 
   readonly addMemberForm = this.fb.group({
@@ -137,6 +138,7 @@ export class GroupListComponent implements OnInit {
         currency: raw.currency!.toUpperCase(),
         startDate: raw.type === 'TRIP' && raw.startDate ? raw.startDate : null,
         endDate: raw.type === 'TRIP' && raw.endDate ? raw.endDate : null,
+        approvalThreshold: raw.approvalThreshold ?? 100,
       })
       .subscribe({
         next: () => {

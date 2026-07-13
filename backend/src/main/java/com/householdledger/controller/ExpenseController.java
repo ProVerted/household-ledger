@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -48,5 +49,23 @@ public class ExpenseController {
             @PathVariable Long expenseId,
             @Valid @RequestBody UpdateExpenseRequest request) {
         return ResponseEntity.ok(expenseService.updateExpense(expenseId, request));
+    }
+
+    // #groupId here binds directly to the @PathVariable of the same name below -
+    // this is the declarative permission check the CustomPermissionEvaluator exists for.
+    @PostMapping("/{expenseId}/approve")
+    @PreAuthorize("hasPermission(#groupId, 'group', 'APPROVE_EXPENSE')")
+    public ResponseEntity<ExpenseResponse> approveExpense(
+            @PathVariable Long groupId,
+            @PathVariable Long expenseId) {
+        return ResponseEntity.ok(expenseService.approveExpense(expenseId));
+    }
+
+    @PostMapping("/{expenseId}/reject")
+    @PreAuthorize("hasPermission(#groupId, 'group', 'APPROVE_EXPENSE')")
+    public ResponseEntity<ExpenseResponse> rejectExpense(
+            @PathVariable Long groupId,
+            @PathVariable Long expenseId) {
+        return ResponseEntity.ok(expenseService.rejectExpense(expenseId));
     }
 }

@@ -20,6 +20,9 @@
       <label for="currency">Currency (3-letter code)</label>
       <input id="currency" type="text" formControlName="currency" maxlength="3" placeholder="USD" />
 
+      <label for="approvalThreshold">Approval threshold (expenses above this need sign-off)</label>
+      <input id="approvalThreshold" type="number" step="0.01" formControlName="approvalThreshold" />
+
       @if (createForm.controls.type.value === 'TRIP') {
         <label for="startDate">Start Date</label>
         <input id="startDate" type="date" formControlName="startDate" />

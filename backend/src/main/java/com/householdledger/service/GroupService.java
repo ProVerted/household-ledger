@@ -41,6 +41,10 @@ public class GroupService {
                 .createdBy(currentUserId)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
+                .approvalThreshold(
+                        request.getApprovalThreshold() != null
+                                ? request.getApprovalThreshold()
+                                : new java.math.BigDecimal("100.00"))
                 .build();
         group = groupRepository.save(group);
 
@@ -132,6 +136,7 @@ public class GroupService {
                 .currency(group.getCurrency())
                 .startDate(group.getStartDate())
                 .endDate(group.getEndDate())
+                .approvalThreshold(group.getApprovalThreshold())
                 .myRole(myRole)
                 .build();
     }

@@ -8,9 +8,12 @@ import { AuthService } from '../services/auth.service';
  * which don't need one) and transparently retries once with a refreshed
  * token if the server responds 401.
  */
+const RETRY_HEADER = 'X-Retry-Attempt';
+
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
   const isAuthEndpoint = req.url.includes('/api/auth/');
+  const isRetry = req.headers.has(RETRY_HEADER);
 
   const token = authService.getAccessToken();
   const authorizedReq =
@@ -20,12 +23,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(authorizedReq).pipe(
     catchError((error: HttpErrorResponse) => {
-      if (error.status === 401 && !isAuthEndpoint) {
+      if (error.status === 401 && !isAuthEndpoint && !isRetry) {
         return authService.refresh().pipe(
           switchMap(() => {
             const refreshedToken = authService.getAccessToken();
             const retriedReq = req.clone({
-              setHeaders: { Authorization: `Bearer ${refreshedToken}` },
+              setHeaders: { Authorization: `Bearer ${refreshedToken}`,
+                [RETRY_HEADER]: 'true',},
             });
             return next(retriedReq);
           }),
@@ -36,6 +40,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         );
       }
       return throwError(() => error);
+      if (error.status === 401 && isRetry) {
+        authService.logout();
+      }
     })
   );
 };

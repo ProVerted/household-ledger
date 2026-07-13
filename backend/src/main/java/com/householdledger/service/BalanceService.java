@@ -47,6 +47,12 @@ public class BalanceService {
 
         List<Expense> expenses = expenseRepository.findByGroupIdOrderByExpenseDateDesc(groupId);
         for (Expense expense : expenses) {
+            // Pending expenses aren't confirmed yet and rejected ones never happened,
+            // financially speaking - only approved expenses should move balances.
+            if (expense.getStatus() != com.householdledger.entity.ExpenseStatus.APPROVED) {
+                continue;
+            }
+
             Long paidByUserId = expense.getPaidBy().getId();
             balances.merge(paidByUserId, expense.getAmount(), BigDecimal::add);
 

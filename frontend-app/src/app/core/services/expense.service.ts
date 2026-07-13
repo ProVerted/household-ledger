@@ -28,4 +28,12 @@ export class ExpenseService {
   ): Observable<ExpenseResponse> {
     return this.http.patch<ExpenseResponse>(`${this.baseUrl}/${groupId}/expenses/${expenseId}`, request);
   }
+
+  approveExpense(groupId: number, expenseId: number): Observable<ExpenseResponse> {
+    return this.http.post<ExpenseResponse>(`${this.baseUrl}/${groupId}/expenses/${expenseId}/approve`, {});
+  }
+
+  rejectExpense(groupId: number, expenseId: number): Observable<ExpenseResponse> {
+    return this.http.post<ExpenseResponse>(`${this.baseUrl}/${groupId}/expenses/${expenseId}/reject`, {});
+  }
 }

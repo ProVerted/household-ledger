@@ -4,6 +4,7 @@ import com.householdledger.dto.*;
 import com.householdledger.entity.*;
 import com.householdledger.repository.ExpenseRepository;
 import com.householdledger.repository.GroupMembershipRepository;
+import com.householdledger.repository.GroupRepository;
 import com.householdledger.repository.UserRepository;
 import com.householdledger.security.GroupContext;
 import com.householdledger.security.SecurityUtils;
@@ -25,6 +26,7 @@ public class ExpenseService {
 
     private final ExpenseRepository expenseRepository;
     private final UserRepository userRepository;
+    private final GroupRepository groupRepository;
     private final GroupMembershipRepository membershipRepository;
     private final SplitCalculationService splitCalculationService;
     private final GroupContext groupContext;
@@ -40,8 +42,15 @@ public class ExpenseService {
         User paidBy = userRepository.findById(paidByUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "paidByUserId not found"));
 
-        Group group = new Group();
-        group.setId(groupId);
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+
+        // Expenses above the group's threshold need sign-off before they count
+        // toward balances; everything at or below it is auto-approved so small,
+        // routine expenses don't create needless approval friction.
+        ExpenseStatus status = request.getAmount().compareTo(group.getApprovalThreshold()) > 0
+                ? ExpenseStatus.PENDING_APPROVAL
+                : ExpenseStatus.APPROVED;
 
         Expense expense = Expense.builder()
                 .group(group)
@@ -52,10 +61,33 @@ public class ExpenseService {
                 .category(request.getCategory())
                 .expenseDate(request.getExpenseDate())
                 .splitType(request.getSplitType())
+                .status(status)
                 .build();
 
         applySplits(expense, request.getAmount(), request.getSplitType(), request.getSplits());
 
+        expense = expenseRepository.save(expense);
+        return toResponse(expense);
+    }
+
+    @Transactional
+    public ExpenseResponse approveExpense(Long expenseId) {
+        Expense expense = findInActiveGroup(expenseId);
+        if (expense.getStatus() != ExpenseStatus.PENDING_APPROVAL) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This expense isn't awaiting approval");
+        }
+        expense.setStatus(ExpenseStatus.APPROVED);
+        expense = expenseRepository.save(expense);
+        return toResponse(expense);
+    }
+
+    @Transactional
+    public ExpenseResponse rejectExpense(Long expenseId) {
+        Expense expense = findInActiveGroup(expenseId);
+        if (expense.getStatus() != ExpenseStatus.PENDING_APPROVAL) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This expense isn't awaiting approval");
+        }
+        expense.setStatus(ExpenseStatus.REJECTED);
         expense = expenseRepository.save(expense);
         return toResponse(expense);
     }

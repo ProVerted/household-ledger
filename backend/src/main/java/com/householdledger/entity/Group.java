@@ -9,6 +9,7 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "app_group")
@@ -44,6 +45,14 @@ public class Group {
 
     @Column(name = "end_date")
     private LocalDate endDate;
+
+    // Expenses at or below this amount are auto-approved; above it, they land
+    // in PENDING_APPROVAL until a treasurer/owner signs off. Defaulted at
+    // creation time so every group has a sensible value without the creator
+    // having to think about it up front.
+    @Column(name = "approval_threshold", nullable = false, precision = 12, scale = 2)
+    @Builder.Default
+    private BigDecimal approvalThreshold = new BigDecimal("100.00");
 
     @PrePersist
     protected void onCreate() {

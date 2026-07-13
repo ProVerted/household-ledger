@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   AbstractControl,
   FormBuilder,
@@ -61,7 +62,7 @@ export class RegisterComponent {
         this.isSubmitting.set(false);
         this.router.navigate(['/dashboard']);
       },
-      error: (err) => {
+      error: (err: HttpErrorResponse) => {
         this.isSubmitting.set(false);
         this.errorMessage.set(err.error?.message ?? 'Registration failed. Please try again.');
       },

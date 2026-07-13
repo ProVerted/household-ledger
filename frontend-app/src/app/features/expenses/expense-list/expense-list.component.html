@@ -25,7 +25,27 @@
             </div>
             <div class="expense-meta">
               Paid by {{ expense.paidByName }} on {{ expense.expenseDate }} · {{ expense.splitType }} split
+              · <span class="status-badge" [class]="'status-' + expense.status">{{ expense.status }}</span>
             </div>
+
+            @if (expense.status === 'PENDING_APPROVAL' && canApprove) {
+              <div class="approval-actions">
+                <button
+                  type="button"
+                  (click)="approve(expense.id)"
+                  [disabled]="processingExpenseId() === expense.id"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  (click)="reject(expense.id)"
+                  [disabled]="processingExpenseId() === expense.id"
+                >
+                  Reject
+                </button>
+              </div>
+            }
             <div class="expense-splits">
               @for (split of expense.splits; track split.userId) {
                 <span class="split-chip">

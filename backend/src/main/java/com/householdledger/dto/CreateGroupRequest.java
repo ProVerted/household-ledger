@@ -6,8 +6,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import jakarta.validation.constraints.DecimalMin;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -25,4 +27,8 @@ public class CreateGroupRequest {
 
     private LocalDate  startDate;
     private LocalDate endDate;
+
+    // Optional - defaults to 100.00 on the backend if omitted.
+    @DecimalMin(value = "0.00", message = "Approval threshold can't be negative")
+    private BigDecimal approvalThreshold;
 }

@@ -225,5 +225,44 @@ core: auth, dynamic multi-tenancy, expense splitting with real algorithmic split
 logic, optimistic locking, and a debt-settlement algorithm. That's a strong stopping
 point if you're presenting soon, with room to keep building if you have time.
 
+---
+
+# Phase 5 (Authorization Depth & Approval Workflow)
+
+## New backend pieces
+- `CustomPermissionEvaluator`: implements Spring Security's `PermissionEvaluator`
+  interface. Lets you write `@PreAuthorize("hasPermission(#groupId, 'group', 'APPROVE_EXPENSE')")`
+  on a controller method instead of a manual role check buried in a service - the
+  permission-to-role mapping lives in one small `Map` at the top of the class.
+- `MethodSecurityConfig`: registers the evaluator via `@EnableMethodSecurity` and a
+  `DefaultMethodSecurityExpressionHandler` bean - this is the wiring step that's
+  easy to forget and silently makes `hasPermission(...)` always return false.
+- `Group.approvalThreshold`: expenses above this amount land in `PENDING_APPROVAL`
+  instead of auto-approving; a treasurer/owner has to explicitly approve or reject.
+- Only `APPROVED` expenses count toward balances now - pending and rejected ones
+  are excluded from `BalanceService`.
+
+## Worth being able to explain
+This project now has *two* authorization patterns living side by side on purpose:
+- **Phase 2's manual `requireRole()`** in `GroupService` (imperative, simple, easy
+  to read for straightforward cases)
+- **Phase 5's `@PreAuthorize("hasPermission(...))")`** (declarative, centralizes the
+  permission-to-role mapping, scales better as more permission types get added)
+
+Being able to say "I used the simpler pattern where it was enough, and the more
+structured one where the codebase would benefit from centralizing the rules" is a
+stronger answer than pretending only one pattern exists.
+
+## Manual test
+1. Create a group with a low approval threshold (e.g. 10.00).
+2. Add an expense above that amount -> its status shows `PENDING_APPROVAL` in the
+   list, with no split effect on balances yet.
+3. As the OWNER, click "Approve" -> status flips to `APPROVED`, and it now appears
+   in balance calculations.
+4. Log in as a plain `MEMBER` (not owner/treasurer) in that same group - the
+   Approve/Reject buttons shouldn't even render, and hitting the endpoint directly
+   (e.g. via curl) should return a 403 with a clear JSON message.
+
+
 
 
