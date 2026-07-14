@@ -263,6 +263,101 @@ stronger answer than pretending only one pattern exists.
    Approve/Reject buttons shouldn't even render, and hitting the endpoint directly
    (e.g. via curl) should return a 403 with a clear JSON message.
 
+## Next: Phase 6
+Recurring expenses and notifications - the feature-complete finish line.
+
+---
+
+# Phase 6 (Recurring Expenses & Polish) — Implemented
+
+## New backend pieces
+- `RecurringExpenseTemplate` entity: description, amount, split rule, `dayOfMonth`,
+  `active` flag, plus `lastGeneratedAt` so the scheduler knows what it's already produced.
+- `RecurringExpenseScheduler` (`@Scheduled`): runs daily, finds active templates whose
+  `dayOfMonth` matches today (clamped to the last day of shorter months - e.g. a
+  `dayOfMonth` of 31 fires on Feb 28/29), and hands off to...
+- `RecurringExpenseGenerationService`: turns a template into a real `Expense` +
+  `ExpenseSplit` rows for that month, respecting the same approval-threshold logic
+  Phase 5 introduced (a generated rent expense above the threshold still lands in
+  `PENDING_APPROVAL`, it isn't silently auto-approved just because it's automatic).
+- `RecurringExpenseService` / `RecurringExpenseController`: create/deactivate templates,
+  list active templates for a group (OWNER/TREASURER only for create/deactivate, same
+  permission pattern as Phase 5's `hasPermission(...)`).
+- **Notifications** via Spring Events (decoupled from the write path on purpose):
+  - `NotificationEvent` is published wherever something notification-worthy happens
+    (new expense added, expense approved/rejected, recurring expense auto-generated).
+  - `NotificationEventListener` is `@Async` (wired through `AsyncConfig`) - so posting
+    an expense doesn't block on writing notification rows for every group member.
+  - `Notification` entity + `NotificationService` / `NotificationController`: list mine,
+    unread count, mark-as-read.
+
+## New endpoints
+```
+POST /api/groups/{groupId}/recurring          -> create a recurring template
+GET  /api/groups/{groupId}/recurring           -> list templates for the group
+PATCH /api/groups/{groupId}/recurring/{id}/deactivate
+GET  /api/notifications/mine
+GET  /api/notifications/unread-count
+POST /api/notifications/{id}/read
+```
+
+## Frontend checklist
+1. Go to a group -> "Recurring expenses" -> "Set up a recurring expense" (OWNER/
+   TREASURER only) -> fill in description/amount/day-of-month/payer -> save.
+2. Confirm it appears in the table with "Active" status and "Never" under
+   Last generated (nothing's run yet).
+3. Dashboard now shows a notification bell. Add a regular expense as a different
+   group member (or via curl as another user) -> the badge count increments without
+   a page reload (polled every 30s).
+4. Click the bell -> panel lists notifications, unread ones are visually distinct;
+   clicking one marks it read and the badge count drops.
+5. As a non-owner/treasurer member, confirm the "Set up a recurring expense" button
+   and the per-row "Deactivate" action don't render, and hitting those endpoints
+   directly returns a 403.
+
+## Worth being able to explain
+Why notifications are event-driven instead of a direct service call: `ExpenseService`
+shouldn't need to know who's subscribed to "an expense was created" - it just publishes
+the fact. Today that's a notification-row writer; tomorrow it could just as easily be
+an email digest or the optional WebSocket push from the stretch goals, added as a new
+listener with zero changes to `ExpenseService` itself. That's the actual argument for
+Spring Events here, not just "it's a pattern I know."
+
+## What's still open (stretch goals, not started)
+- WebSocket/STOMP live push (notifications are polled today, not pushed)
+- Multi-currency conversion (currency is stored per-group/per-expense but never
+  converted - a balance sheet with mixed currencies will silently misreport)
+- Docker Compose + deployment write-up
+
+## Milestone
+This closes the build plan end-to-end: auth, dynamic multi-tenancy, expense splitting
+with real split-type logic, optimistic locking, a debt-settlement algorithm, layered
+authorization, and now recurring expenses with async notifications. Feature-complete
+per the original spec.
+
+---
+
+# UI Design Pass
+
+The frontend has been restyled around a single idea: this is a ledger, not a dashboard
+- the one job of the UI is "let me see who owes what and act on it fast."
+
+- **Palette**: `#F4F5F1` paper background, `#17241F` ink for text, `#1F6F5C` emerald
+  as the primary action color, `#E4572E` coral for anything needing attention
+  (pending approval, validation errors), and a dedicated owed/owing pair
+  (`#2F9E44` / `#C0392B`) used consistently across balances and settlements.
+- **Type**: Space Grotesk for headings (used sparingly - page titles, card names),
+  Inter for body/UI copy, and JetBrains Mono for every money figure, so amounts
+  align the way real ledger columns do.
+- **Signature moment**: the settlement suggestion is now a torn-ticket-style card
+  (`.settlement-row` / `.ticket-*` classes in `balance-summary.component.html`) with
+  a directional thread running from the debtor (coral end) to the creditor (green
+  end), rather than a plain "Sam → Alex: $42" line.
+- All shared tokens and component styles live in `frontend/src/styles.css`; no
+  per-component CSS files were introduced, so existing component class names
+  (`.expense-item`, `.group-item`, `.balance-list`, etc.) needed no template
+  changes beyond the settlement-ticket markup.
+
 
 
 

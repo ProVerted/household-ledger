@@ -43,5 +43,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/balances/balance-summary.component').then((m) => m.BalanceSummaryComponent),
   },
+  {
+    path: 'recurring',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/recurring/recurring-list/recurring-list.component').then((m) => m.RecurringListComponent),
+  },
   { path: '**', redirectTo: 'login' },
 ];

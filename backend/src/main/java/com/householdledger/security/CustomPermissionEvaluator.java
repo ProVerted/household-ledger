@@ -33,7 +33,8 @@ public class CustomPermissionEvaluator implements PermissionEvaluator{
     private static final Map<String, Set<GroupRole>> PERMISSION_ROLES = Map.of(
             "APPROVE_EXPENSE", Set.of(GroupRole.OWNER, GroupRole.TREASURER),
             "MANAGE_MEMBERS", Set.of(GroupRole.OWNER, GroupRole.TREASURER),
-            "MANAGE_GROUP", Set.of(GroupRole.OWNER)
+            "MANAGE_GROUP", Set.of(GroupRole.OWNER),
+            "MANAGE_RECURRING", Set.of(GroupRole.OWNER, GroupRole.TREASURER)
     );
 
     private final GroupMembershipRepository groupMembershipRepository;

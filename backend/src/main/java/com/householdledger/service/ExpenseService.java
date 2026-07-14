@@ -6,10 +6,12 @@ import com.householdledger.repository.ExpenseRepository;
 import com.householdledger.repository.GroupMembershipRepository;
 import com.householdledger.repository.GroupRepository;
 import com.householdledger.repository.UserRepository;
+import com.householdledger.event.NotificationEvent;
 import com.householdledger.security.GroupContext;
 import com.householdledger.security.SecurityUtils;
 import jakarta.persistence.OptimisticLockException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,7 @@ public class ExpenseService {
     private final GroupMembershipRepository membershipRepository;
     private final SplitCalculationService splitCalculationService;
     private final GroupContext groupContext;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ExpenseResponse createExpense(CreateExpenseRequest request) {
@@ -67,6 +70,11 @@ public class ExpenseService {
         applySplits(expense, request.getAmount(), request.getSplitType(), request.getSplits());
 
         expense = expenseRepository.save(expense);
+
+        if (expense.getStatus() == ExpenseStatus.PENDING_APPROVAL) {
+            notifyApprovers(groupId, expense);
+        }
+
         return toResponse(expense);
     }
 
@@ -78,6 +86,10 @@ public class ExpenseService {
         }
         expense.setStatus(ExpenseStatus.APPROVED);
         expense = expenseRepository.save(expense);
+
+        eventPublisher.publishEvent(new NotificationEvent(expense.getPaidBy().getId(),
+                "Your expense \"" + expense.getDescription() + "\" was approved."));
+
         return toResponse(expense);
     }
 
@@ -89,7 +101,22 @@ public class ExpenseService {
         }
         expense.setStatus(ExpenseStatus.REJECTED);
         expense = expenseRepository.save(expense);
+
+        eventPublisher.publishEvent(new NotificationEvent(expense.getPaidBy().getId(),
+                "Your expense \"" + expense.getDescription() + "\" was rejected."));
+
         return toResponse(expense);
+    }
+
+    // Notifies whoever can actually act on this - OWNER/TREASURER members -
+    // rather than the whole group, since everyone else has nothing to do here.
+    private void notifyApprovers(Long groupId, Expense expense) {
+        String message = expense.getPaidBy().getName() + "'s expense \"" + expense.getDescription()
+                + "\" (" + expense.getCurrency() + " " + expense.getAmount() + ") needs your approval.";
+
+        membershipRepository.findByGroupIdAndActiveTrue(groupId).stream()
+                .filter(m -> m.getRole() == GroupRole.OWNER || m.getRole() == GroupRole.TREASURER)
+                .forEach(m -> eventPublisher.publishEvent(new NotificationEvent(m.getUser().getId(), message)));
     }
 
     public List<ExpenseResponse> getExpenses() {

@@ -1,0 +1,108 @@
+<div class="recurring">
+  <h1>Recurring Expenses</h1>
+  <p><a routerLink="/dashboard">&larr; Back to dashboard</a></p>
+
+  @if (!groupContext.activeGroup()) {
+    <p>You don't have an active group yet.</p>
+  } @else {
+
+    @if (canManage) {
+      <button (click)="toggleCreateForm()">
+        {{ showCreateForm() ? 'Cancel' : 'Set up a recurring expense' }}
+      </button>
+    }
+
+    @if (showCreateForm()) {
+      <form [formGroup]="createForm" (ngSubmit)="onCreate()" class="create-form">
+        <div>
+          <label>Description</label>
+          <input type="text" formControlName="description" placeholder="e.g. Monthly rent" />
+        </div>
+
+        <div>
+          <label>Amount</label>
+          <input type="number" step="0.01" formControlName="amount" />
+        </div>
+
+        <div>
+          <label>Currency</label>
+          <input type="text" formControlName="currency" maxlength="3" />
+        </div>
+
+        <div>
+          <label>Category (optional)</label>
+          <input type="text" formControlName="category" placeholder="e.g. Housing" />
+        </div>
+
+        <div>
+          <label>Day of month</label>
+          <input type="number" min="1" max="31" formControlName="dayOfMonth" />
+          <small>If a month is shorter than this day, it fires on that month's last day instead.</small>
+        </div>
+
+        <div>
+          <label>Paid by</label>
+          <select formControlName="paidByUserId">
+            <option [ngValue]="null">Me</option>
+            @for (member of members(); track member.userId) {
+              <option [ngValue]="member.userId">{{ member.name }}</option>
+            }
+          </select>
+        </div>
+
+        @if (errorMessage()) {
+          <p class="error">{{ errorMessage() }}</p>
+        }
+
+        <button type="submit" [disabled]="isCreating()">
+          {{ isCreating() ? 'Saving...' : 'Save recurring expense' }}
+        </button>
+      </form>
+    }
+
+    @if (isLoading()) {
+      <p>Loading...</p>
+    } @else if (templates().length === 0) {
+      <p>No recurring expenses set up for this group yet.</p>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Day</th>
+            <th>Paid by</th>
+            <th>Last generated</th>
+            <th>Status</th>
+            @if (canManage) {
+              <th></th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (template of templates(); track template.id) {
+            <tr [class.inactive]="!template.active">
+              <td>{{ template.description }}</td>
+              <td>{{ template.currency }} {{ template.amount }}</td>
+              <td>{{ template.dayOfMonth }}</td>
+              <td>{{ template.paidByName }}</td>
+              <td>{{ template.lastGeneratedAt ?? 'Never' }}</td>
+              <td>{{ template.active ? 'Active' : 'Deactivated' }}</td>
+              @if (canManage) {
+                <td>
+                  @if (template.active) {
+                    <button
+                      (click)="deactivate(template.id)"
+                      [disabled]="processingTemplateId() === template.id">
+                      Deactivate
+                    </button>
+                  }
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  }
+</div>
