@@ -16,7 +16,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User {
+public class User extends AbstractAuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -31,12 +31,4 @@ public class User {
     // Stores the bcrypt hash - never the raw password.
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = Instant.now();
-    }
 }

@@ -5,20 +5,20 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { GroupContextService } from '../../../core/services/group-context.service';
 import { ExpenseService } from '../../../core/services/expense.service';
 import { ExpenseResponse } from '../../../core/models/expense.model';
+import { AsyncListState } from '../../../shared/async-state/async-list-state';
+import { StatusBadgeComponent } from '../../../shared/status-badge/status-badge.component';
 
 @Component({
   selector: 'app-expense-list',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, StatusBadgeComponent],
   templateUrl: './expense-list.component.html',
 })
 export class ExpenseListComponent implements OnInit {
   private expenseService = inject(ExpenseService);
   groupContext = inject(GroupContextService);
 
-  readonly expenses = signal<ExpenseResponse[]>([]);
-  readonly isLoading = signal(true);
-  readonly errorMessage = signal<string | null>(null);
+  readonly expensesState = new AsyncListState<ExpenseResponse[]>();
   readonly processingExpenseId = signal<number | null>(null);
 
   get canApprove(): boolean {
@@ -33,21 +33,14 @@ export class ExpenseListComponent implements OnInit {
   loadExpenses(): void {
     const groupId = this.groupContext.activeGroup()?.id;
     if (!groupId) {
-      this.isLoading.set(false);
+      this.expensesState.isLoading.set(false);
       return;
     }
 
-    this.isLoading.set(true);
-    this.expenseService.getExpenses(groupId).subscribe({
-      next: (expenses) => {
-        this.expenses.set(expenses);
-        this.isLoading.set(false);
-      },
-      error: () => {
-        this.errorMessage.set('Could not load expenses.');
-        this.isLoading.set(false);
-      },
-    });
+    this.expensesState.load(
+      this.expenseService.getExpenses(groupId),
+      'Could not load expenses.'
+    );
   }
 
   approve(expenseId: number): void {
@@ -62,7 +55,7 @@ export class ExpenseListComponent implements OnInit {
       },
       error: (err: HttpErrorResponse) => {
         this.processingExpenseId.set(null);
-        this.errorMessage.set(err.error?.message ?? 'Could not approve expense.');
+        this.expensesState.errorMessage.set(err.error?.message ?? 'Could not approve expense.');
       },
     });
   }
@@ -79,7 +72,7 @@ export class ExpenseListComponent implements OnInit {
       },
       error: (err: HttpErrorResponse) => {
         this.processingExpenseId.set(null);
-        this.errorMessage.set(err.error?.message ?? 'Could not reject expense.');
+        this.expensesState.errorMessage.set(err.error?.message ?? 'Could not reject expense.');
       },
     });
   }

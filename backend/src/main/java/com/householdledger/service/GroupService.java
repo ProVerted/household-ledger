@@ -38,7 +38,6 @@ public class GroupService {
                 .name(request.getName())
                 .type(request.getType())
                 .currency(request.getCurrency().toUpperCase())
-                .createdBy(currentUserId)
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
                 .approvalThreshold(

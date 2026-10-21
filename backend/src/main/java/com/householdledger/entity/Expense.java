@@ -21,7 +21,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Expense {
+public class Expense extends AbstractAuditableEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -57,9 +57,6 @@ public class Expense {
     @Builder.Default
     private ExpenseStatus status = ExpenseStatus.APPROVED;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
     // Optimistic locking: every update must send back the version it read.
     // A stale write (someone else edited it first) throws OptimisticLockException,
     // which the service layer turns into a 409 Conflict instead of silently
@@ -72,11 +69,6 @@ public class Expense {
     @OneToMany(mappedBy = "expense", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ExpenseSplit> splits = new ArrayList<>();
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = Instant.now();
-    }
 
     public void addSplit(ExpenseSplit split) {
         splits.add(split);

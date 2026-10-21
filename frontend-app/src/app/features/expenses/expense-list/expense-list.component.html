@@ -9,15 +9,15 @@
   } @else {
     <p>Group: <strong>{{ groupContext.activeGroup()?.name }}</strong></p>
 
-    @if (isLoading()) {
+    @if (expensesState.isLoading()) {
       <p>Loading expenses...</p>
-    } @else if (errorMessage()) {
-      <p class="form-error">{{ errorMessage() }}</p>
-    } @else if (expenses().length === 0) {
+    } @else if (expensesState.errorMessage()) {
+      <p class="form-error">{{ expensesState.errorMessage() }}</p>
+    } @else if (expensesState.data()?.length === 0) {
       <p>No expenses yet for this group.</p>
     } @else {
       <ul class="expense-list">
-        @for (expense of expenses(); track expense.id) {
+        @for (expense of expensesState.data(); track expense.id) {
           <li class="expense-item">
             <div class="expense-main">
               <span class="expense-description">{{ expense.description }}</span>
@@ -25,7 +25,7 @@
             </div>
             <div class="expense-meta">
               Paid by {{ expense.paidByName }} on {{ expense.expenseDate }} · {{ expense.splitType }} split
-              · <span class="status-badge" [class]="'status-' + expense.status">{{ expense.status }}</span>
+              · <app-status-badge [status]="expense.status" />
             </div>
 
             @if (expense.status === 'PENDING_APPROVAL' && canApprove) {

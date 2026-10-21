@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Group {
+public class Group extends AbstractAuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,12 +34,6 @@ public class Group {
     @Column(nullable = false, length = 3)
     private String currency;
 
-    @Column(name = "created_by", nullable = false)
-    private Long createdBy;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
     @Column(name = "start_date")
     private LocalDate startDate;
 
@@ -53,9 +47,4 @@ public class Group {
     @Column(name = "approval_threshold", nullable = false, precision = 12, scale = 2)
     @Builder.Default
     private BigDecimal approvalThreshold = new BigDecimal("100.00");
-
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = Instant.now();
-    }
 }
