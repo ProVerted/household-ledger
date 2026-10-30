@@ -1,10 +1,12 @@
 import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { GroupContextService } from '../../core/services/group-context.service';
 import { GroupService } from '../../core/services/group.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { WebsocketNotificationService } from '../../core/services/websocket-notification.service';
 import { NotificationResponse } from '../../core/models/notification.model';
 
 @Component({
@@ -16,13 +18,41 @@ import { NotificationResponse } from '../../core/models/notification.model';
       <div class="dashboard-header">
         <h1>Welcome, {{ authService.currentUser()?.name }}</h1>
 
-        <button class="notification-bell" (click)="toggleNotifications()">
-          🔔
-          @if (notificationService.unreadCount() > 0) {
-            <span class="badge">{{ notificationService.unreadCount() }}</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          @if (wsService.isConnected()) {
+            <span
+              title="Live Real-Time WebSocket Connected"
+              style="font-size: 0.75rem; color: #2f9e44; display: flex; align-items: center; gap: 4px;"
+            >
+              <span style="display: inline-block; width: 8px; height: 8px; background: #2f9e44; border-radius: 50%;"></span>
+              Live
+            </span>
           }
-        </button>
+
+          <button class="notification-bell" (click)="toggleNotifications()">
+            🔔
+            @if (notificationService.unreadCount() > 0) {
+              <span class="badge">{{ notificationService.unreadCount() }}</span>
+            }
+          </button>
+        </div>
       </div>
+
+      @if (latestLiveAlert(); as alert) {
+        <div
+          class="live-toast"
+          style="margin-bottom: 15px; padding: 10px 14px; background: #eef7f2; border-left: 4px solid #1f6f5c; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;"
+        >
+          <span>⚡ <strong>Just now:</strong> {{ alert.message }}</span>
+          <button
+            type="button"
+            (click)="dismissLiveAlert()"
+            style="background: transparent; border: none; font-size: 1rem; cursor: pointer; color: #666;"
+          >
+            ✕
+          </button>
+        </div>
+      }
 
       @if (showNotifications()) {
         <div class="notification-panel">
@@ -58,34 +88,50 @@ export class DashboardComponent implements OnInit, OnDestroy {
   authService = inject(AuthService);
   groupContext = inject(GroupContextService);
   notificationService = inject(NotificationService);
+  wsService = inject(WebsocketNotificationService);
   private groupService = inject(GroupService);
   private router = inject(Router);
 
   readonly showNotifications = signal(false);
   readonly notifications = signal<NotificationResponse[]>([]);
+  readonly latestLiveAlert = signal<NotificationResponse | null>(null);
 
-  // Polling rather than WebSockets for now - the spec calls out live
-  // WebSocket updates as an optional stretch goal on top of this, not a
-  // requirement; this gets the notification badge working without that
-  // added complexity.
+  private liveSub: Subscription | null = null;
   private pollHandle: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
     this.groupService.getMyGroups().subscribe({
       next: (groups) => this.groupContext.setGroups(groups),
-      error: () => {
-        // Non-fatal for the dashboard - the groups page will surface the real error.
-      },
+      error: () => {},
     });
 
     this.notificationService.refreshUnreadCount();
-    this.pollHandle = setInterval(() => this.notificationService.refreshUnreadCount(), 30000);
+
+    // Connect real-time STOMP WebSocket
+    this.wsService.connect();
+
+    // Listen to live push notifications
+    this.liveSub = this.wsService.onNotification$.subscribe((notification) => {
+      this.latestLiveAlert.set(notification);
+      // Prepend to current notification list if open
+      this.notifications.update((list) => [notification, ...list]);
+    });
+
+    // Background heartbeat polling fallback (every 60s) in case WebSocket temporarily drops
+    this.pollHandle = setInterval(() => this.notificationService.refreshUnreadCount(), 60000);
   }
 
   ngOnDestroy(): void {
     if (this.pollHandle) {
       clearInterval(this.pollHandle);
     }
+    if (this.liveSub) {
+      this.liveSub.unsubscribe();
+    }
+  }
+
+  dismissLiveAlert(): void {
+    this.latestLiveAlert.set(null);
   }
 
   toggleNotifications(): void {
@@ -93,9 +139,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.showNotifications()) {
       this.notificationService.getMyNotifications().subscribe({
         next: (list) => this.notifications.set(list),
-        error: () => {
-          // Non-fatal - the bell icon's count already came from refreshUnreadCount().
-        },
+        error: () => {},
       });
     }
   }
@@ -111,6 +155,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    this.wsService.disconnect();
     this.authService.logout();
     this.router.navigate(['/login']);
   }

@@ -35,6 +35,10 @@ export class NotificationService {
     });
   }
 
+  incrementUnreadCount(): void {
+    this.unreadCountSignal.update((count) => count + 1);
+  }
+
   markRead(notificationId: number): Observable<void> {
     return this.http
       .patch<void>(`${this.baseUrl}/${notificationId}/read`, {})
