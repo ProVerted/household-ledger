@@ -1,6 +1,6 @@
 <div class="expense-form-container">
   <h1>New Expense</h1>
-  <p>Group: <strong>{{ groupContext.activeGroup()?.name }}</strong></p>
+  <p>Group: <strong>{{ groupContext.activeGroup()?.name }}</strong> (Base: <strong>{{ groupContext.activeGroup()?.currency }}</strong>)</p>
 
   @if (isLoadingMembers()) {
     <p>Loading group members...</p>
@@ -10,10 +10,54 @@
       <input id="description" type="text" formControlName="description" placeholder="e.g. Groceries" />
 
       <label for="amount">Amount</label>
-      <input id="amount" type="number" step="0.01" formControlName="amount" />
+      <input id="amount" type="number" step="0.01" formControlName="amount" (input)="onCurrencyOrAmountChange()" />
 
       <label for="currency">Currency</label>
-      <input id="currency" type="text" formControlName="currency" maxlength="3" />
+      <div class="currency-input-row" style="display: flex; gap: 8px;">
+        <input
+          id="currency"
+          type="text"
+          formControlName="currency"
+          maxlength="3"
+          list="currencyList"
+          (input)="onCurrencyOrAmountChange()"
+          style="text-transform: uppercase;"
+        />
+        <datalist id="currencyList">
+          @for (c of supportedCurrencies(); track c.code) {
+            <option [value]="c.code">{{ c.name }} ({{ c.symbol }})</option>
+          }
+        </datalist>
+      </div>
+
+      @if (isForeignCurrency()) {
+        <div class="currency-conversion-info" style="margin: 8px 0; padding: 10px; background: #eef7f2; border: 1px solid #c2e2d0; border-radius: 4px; font-size: 0.9em;">
+          <span>
+            💱 <strong>Conversion:</strong> 1 {{ form.get('currency')?.value }} ≈ {{ activeExchangeRate() }} {{ groupContext.activeGroup()?.currency }}
+            • Normalized group amount: <strong>{{ groupContext.activeGroup()?.currency }} {{ estimatedBaseAmount() }}</strong>
+          </span>
+          <div style="margin-top: 6px;">
+            <a href="javascript:void(0)" (click)="toggleCustomRate()" style="font-size: 0.85em; color: #1f6f5c; text-decoration: underline;">
+              {{ showCustomRate() ? 'Hide custom exchange rate' : 'Enter custom rate from receipt' }}
+            </a>
+          </div>
+
+          @if (showCustomRate()) {
+            <div style="margin-top: 8px;">
+              <label for="customRate" style="font-size: 0.85em;">Custom Rate (1 {{ form.get('currency')?.value }} = ? {{ groupContext.activeGroup()?.currency }}):</label>
+              <input
+                id="customRate"
+                type="number"
+                step="0.000001"
+                formControlName="customExchangeRate"
+                (input)="onCurrencyOrAmountChange()"
+                placeholder="e.g. 1.085000"
+                style="margin-top: 4px;"
+              />
+            </div>
+          }
+        </div>
+      }
 
       <label for="category">Category (optional)</label>
       <input id="category" type="text" formControlName="category" placeholder="e.g. Utilities" />
@@ -40,7 +84,7 @@
           @switch (form.controls.splitType.value) {
             @case ('EQUAL') { Split equally among: }
             @case ('PERCENTAGE') { Split by percentage (must total 100%): }
-            @case ('EXACT') { Split by exact amount (must total the expense amount): }
+            @case ('EXACT') { Split by exact amount (must total the expense amount in {{ form.get('currency')?.value }}): }
           }
         </legend>
 

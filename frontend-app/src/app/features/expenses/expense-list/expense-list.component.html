@@ -7,7 +7,7 @@
   @if (!groupContext.activeGroup()) {
     <p>No active group selected. <a routerLink="/groups">Choose a group</a>.</p>
   } @else {
-    <p>Group: <strong>{{ groupContext.activeGroup()?.name }}</strong></p>
+    <p>Group: <strong>{{ groupContext.activeGroup()?.name }}</strong> (Base currency: <strong>{{ groupContext.activeGroup()?.currency }}</strong>)</p>
 
     @if (expensesState.isLoading()) {
       <p>Loading expenses...</p>
@@ -21,7 +21,14 @@
           <li class="expense-item">
             <div class="expense-main">
               <span class="expense-description">{{ expense.description }}</span>
-              <span class="expense-amount">{{ expense.currency }} {{ expense.amount }}</span>
+              <span class="expense-amount">
+                {{ expense.currency }} {{ expense.amount }}
+                @if (expense.currency !== (groupContext.activeGroup()?.currency ?? 'USD') && expense.baseCurrencyAmount) {
+                  <span class="converted-subtext" style="font-size: 0.8em; color: #666; display: block; text-align: right; font-weight: normal;">
+                    ≈ {{ groupContext.activeGroup()?.currency }} {{ expense.baseCurrencyAmount }}
+                  </span>
+                }
+              </span>
             </div>
             <div class="expense-meta">
               Paid by {{ expense.paidByName }} on {{ expense.expenseDate }} · {{ expense.splitType }} split
@@ -50,6 +57,9 @@
               @for (split of expense.splits; track split.userId) {
                 <span class="split-chip">
                   {{ split.name }}: {{ expense.currency }} {{ split.shareAmount }}
+                  @if (expense.currency !== (groupContext.activeGroup()?.currency ?? 'USD') && split.baseCurrencyShareAmount) {
+                    (~{{ groupContext.activeGroup()?.currency }} {{ split.baseCurrencyShareAmount }})
+                  }
                   @if (split.sharePercentage) {
                     ({{ split.sharePercentage }}%)
                   }

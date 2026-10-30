@@ -15,8 +15,10 @@ import { GroupContextService } from '../../../core/services/group-context.servic
 import { GroupService } from '../../../core/services/group.service';
 import { ExpenseService } from '../../../core/services/expense.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { MembershipResponse } from '../../../core/models/group.model';
 import { SplitType } from '../../../core/models/expense.model';
+import { SupportedCurrency } from '../../../core/models/currency.model';
 
 // Cross-field validator: what "valid splits" means depends entirely on splitType,
 // so this has to look at splitType, amount, and every split row together -
@@ -64,6 +66,7 @@ export class ExpenseFormComponent implements OnInit {
   private groupService = inject(GroupService);
   private expenseService = inject(ExpenseService);
   private authService = inject(AuthService);
+  private currencyService = inject(CurrencyService);
   private router = inject(Router);
   groupContext = inject(GroupContextService);
 
@@ -72,11 +75,31 @@ export class ExpenseFormComponent implements OnInit {
   readonly isSubmitting = signal(false);
   readonly errorMessage = signal<string | null>(null);
 
+  readonly supportedCurrencies = signal<SupportedCurrency[]>([
+    { code: 'USD', name: 'US Dollar', symbol: '$' },
+    { code: 'EUR', name: 'Euro', symbol: '€' },
+    { code: 'GBP', name: 'British Pound', symbol: '£' },
+    { code: 'CAD', name: 'Canadian Dollar', symbol: 'CA$' },
+    { code: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
+    { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
+    { code: 'CHF', name: 'Swiss Franc', symbol: 'CHF' },
+    { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
+    { code: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
+    { code: 'SGD', name: 'Singapore Dollar', symbol: 'S$' },
+    { code: 'NZD', name: 'New Zealand Dollar', symbol: 'NZ$' },
+  ]);
+
+  readonly activeExchangeRate = signal<number | null>(null);
+  readonly estimatedBaseAmount = signal<number | null>(null);
+  readonly isForeignCurrency = signal(false);
+  readonly showCustomRate = signal(false);
+
   readonly form = this.fb.group(
     {
       description: ['', [Validators.required]],
       amount: [null as number | null, [Validators.required, Validators.min(0.01)]],
       currency: ['USD', [Validators.required, Validators.minLength(3), Validators.maxLength(3)]],
+      customExchangeRate: [null as number | null, [Validators.min(0.000001)]],
       category: [''],
       expenseDate: [new Date().toISOString().substring(0, 10), [Validators.required]],
       paidByUserId: [null as number | null, [Validators.required]],
@@ -97,7 +120,19 @@ export class ExpenseFormComponent implements OnInit {
       return;
     }
 
-    this.form.patchValue({ currency: this.groupContext.activeGroup()?.currency ?? 'USD' });
+    const baseCurrency = this.groupContext.activeGroup()?.currency ?? 'USD';
+    this.form.patchValue({ currency: baseCurrency });
+
+    this.currencyService.getSupportedCurrencies().subscribe({
+      next: (list) => {
+        if (list && list.length > 0) {
+          this.supportedCurrencies.set(list);
+        }
+      },
+      error: () => {
+        // Fallback list is already populated
+      },
+    });
 
     this.groupService.getMembers(groupId).subscribe({
       next: (members) => {
@@ -133,10 +168,43 @@ export class ExpenseFormComponent implements OnInit {
   }
 
   onSplitTypeChange(): void {
-    // Re-run validation since switching split type changes what "valid" means
-    // for the exact same row values (e.g. 100 might be fine for percentage,
-    // meaningless for exact).
     this.form.updateValueAndValidity();
+  }
+
+  onCurrencyOrAmountChange(): void {
+    const enteredCurrency = (this.form.get('currency')?.value || '').trim().toUpperCase();
+    const baseCurrency = (this.groupContext.activeGroup()?.currency || 'USD').trim().toUpperCase();
+    const amount = Number(this.form.get('amount')?.value) || 0;
+    const customRate = Number(this.form.get('customExchangeRate')?.value) || null;
+
+    if (enteredCurrency && enteredCurrency !== baseCurrency) {
+      this.isForeignCurrency.set(true);
+
+      if (customRate && customRate > 0) {
+        this.activeExchangeRate.set(customRate);
+        this.estimatedBaseAmount.set(Math.round(amount * customRate * 100) / 100);
+      } else {
+        this.currencyService.getRate(enteredCurrency, baseCurrency).subscribe({
+          next: (rateData) => {
+            this.activeExchangeRate.set(rateData.rate);
+            this.estimatedBaseAmount.set(Math.round(amount * rateData.rate * 100) / 100);
+          },
+          error: () => {
+            // Default 1:1 if rate lookup unavailable
+            this.activeExchangeRate.set(1);
+            this.estimatedBaseAmount.set(amount);
+          },
+        });
+      }
+    } else {
+      this.isForeignCurrency.set(false);
+      this.activeExchangeRate.set(1);
+      this.estimatedBaseAmount.set(amount);
+    }
+  }
+
+  toggleCustomRate(): void {
+    this.showCustomRate.update((v) => !v);
   }
 
   onSubmit(): void {
@@ -161,11 +229,14 @@ export class ExpenseFormComponent implements OnInit {
         value: splitType === 'EQUAL' ? null : Number(row.value),
       }));
 
+    const customRate = raw.customExchangeRate ? Number(raw.customExchangeRate) : null;
+
     this.expenseService
       .createExpense(groupId, {
         description: raw.description!,
         amount: raw.amount!,
-        currency: raw.currency!.toUpperCase(),
+        currency: raw.currency!.trim().toUpperCase(),
+        exchangeRate: customRate,
         category: raw.category || null,
         expenseDate: raw.expenseDate!,
         paidByUserId: raw.paidByUserId,

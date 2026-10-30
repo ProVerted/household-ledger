@@ -18,6 +18,9 @@ public class ExpenseResponse {
     private String description;
     private BigDecimal amount;
     private String currency;
+    private BigDecimal exchangeRate;
+    private BigDecimal baseCurrencyAmount;
+    private String baseCurrency;
     private String category;
     private LocalDate expenseDate;
     private Long paidByUserId;

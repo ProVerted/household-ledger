@@ -155,4 +155,61 @@ class BalanceServiceTest {
         assertEquals(new BigDecimal("0.00"), netBalances.get(1L));
         assertEquals(new BigDecimal("0.00"), netBalances.get(2L));
     }
+
+    @Test
+    @DisplayName("Multi-currency normalization: foreign currency expenses convert to base currency in balance calculations")
+    void testMultiCurrencyNormalization() {
+        Long groupId = 10L;
+
+        User alice = User.builder().id(1L).name("Alice").email("alice@test.com").build();
+        User bob = User.builder().id(2L).name("Bob").email("bob@test.com").build();
+        Group group = Group.builder().id(groupId).name("Trip Group").currency("USD").build();
+
+        GroupMembership memAlice = GroupMembership.builder().id(101L).group(group).user(alice).active(true).build();
+        GroupMembership memBob = GroupMembership.builder().id(102L).group(group).user(bob).active(true).build();
+
+        when(membershipRepository.findByGroupIdAndActiveTrue(groupId)).thenReturn(List.of(memAlice, memBob));
+
+        // Alice paid 100 EUR, converted to 110 USD (rate 1.10).
+        // Split equally: 55 USD each (50 EUR each in transaction currency).
+        Expense foreignExpense = Expense.builder()
+                .id(1L)
+                .group(group)
+                .paidBy(alice)
+                .amount(new BigDecimal("100.00"))
+                .currency("EUR")
+                .exchangeRate(new BigDecimal("1.100000"))
+                .baseCurrencyAmount(new BigDecimal("110.00"))
+                .expenseDate(LocalDate.now())
+                .status(ExpenseStatus.APPROVED)
+                .build();
+
+        ExpenseSplit splitAlice = ExpenseSplit.builder()
+                .id(11L)
+                .expense(foreignExpense)
+                .user(alice)
+                .shareAmount(new BigDecimal("50.00"))
+                .baseCurrencyShareAmount(new BigDecimal("55.00"))
+                .build();
+
+        ExpenseSplit splitBob = ExpenseSplit.builder()
+                .id(12L)
+                .expense(foreignExpense)
+                .user(bob)
+                .shareAmount(new BigDecimal("50.00"))
+                .baseCurrencyShareAmount(new BigDecimal("55.00"))
+                .build();
+
+        foreignExpense.setSplits(List.of(splitAlice, splitBob));
+
+        when(expenseRepository.findByGroupIdOrderByExpenseDateDesc(groupId)).thenReturn(List.of(foreignExpense));
+        when(settlementTransactionRepository.findByGroupIdOrderBySettledAtDesc(groupId)).thenReturn(List.of());
+
+        Map<Long, BigDecimal> netBalances = balanceService.computeNetBalances(groupId);
+
+        // Alice: paid +110.00 USD, owes -55.00 USD => net +55.00 USD
+        assertEquals(new BigDecimal("55.00"), netBalances.get(1L));
+        // Bob: paid 0 USD, owes -55.00 USD => net -55.00 USD
+        assertEquals(new BigDecimal("-55.00"), netBalances.get(2L));
+    }
 }

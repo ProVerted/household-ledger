@@ -4,12 +4,10 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +41,17 @@ public class Expense extends AbstractAuditableEntity {
     @Column(nullable = false, length = 3)
     private String currency;
 
+    // Exchange rate to convert expense currency into the group's base currency
+    // (e.g. 1.080000 for EUR to USD). Defaults to 1.000000 when same currency.
+    @Column(name = "exchange_rate", nullable = false, precision = 12, scale = 6)
+    @Builder.Default
+    private BigDecimal exchangeRate = BigDecimal.ONE;
+
+    // The normalized expense amount in group's base currency.
+    // Balances and debt settlements operate on this amount.
+    @Column(name = "base_currency_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal baseCurrencyAmount;
+
     private String category;
 
     @Column(name = "expense_date", nullable = false)
@@ -69,6 +78,14 @@ public class Expense extends AbstractAuditableEntity {
     @OneToMany(mappedBy = "expense", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ExpenseSplit> splits = new ArrayList<>();
+
+    public BigDecimal getExchangeRate() {
+        return exchangeRate != null ? exchangeRate : BigDecimal.ONE;
+    }
+
+    public BigDecimal getBaseCurrencyAmount() {
+        return baseCurrencyAmount != null ? baseCurrencyAmount : amount;
+    }
 
     public void addSplit(ExpenseSplit split) {
         splits.add(split);

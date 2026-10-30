@@ -28,12 +28,12 @@ public class BalanceService {
     /**
      * Net balance per member: how much they paid across all expenses, minus how
      * much they owe across all splits, adjusted for any confirmed settlements.
+     * All calculations are normalized in the group's base currency using
+     * baseCurrencyAmount and baseCurrencyShareAmount to support multi-currency expenses.
      * Positive = the group owes them; negative = they owe the group.
      *
-     * Confirmed settlements DO offset these balances - if A pays B $50 and that
+     * Confirmed settlements offset these balances - if A pays B $50 and that
      * gets confirmed, A's debt shrinks by $50 and B's credit shrinks by $50.
-     * Otherwise a confirmed payment would keep showing up as still owed forever,
-     * which is exactly the bug this method used to have.
      */
     public Map<Long, BigDecimal> computeNetBalances(Long groupId) {
         // Seed every active member at zero first, so someone who hasn't paid or
@@ -54,11 +54,13 @@ public class BalanceService {
             }
 
             Long paidByUserId = expense.getPaidBy().getId();
-            balances.merge(paidByUserId, expense.getAmount(), BigDecimal::add);
+            // Multi-currency normalized: credit paid amount in base currency
+            balances.merge(paidByUserId, expense.getBaseCurrencyAmount(), BigDecimal::add);
 
             for (ExpenseSplit split : expense.getSplits()) {
                 Long owingUserId = split.getUser().getId();
-                balances.merge(owingUserId, split.getShareAmount().negate(), BigDecimal::add);
+                // Multi-currency normalized: debit split share in base currency
+                balances.merge(owingUserId, split.getBaseCurrencyShareAmount().negate(), BigDecimal::add);
             }
         }
 

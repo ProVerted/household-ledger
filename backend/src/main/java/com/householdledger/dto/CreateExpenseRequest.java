@@ -25,6 +25,11 @@ public class CreateExpenseRequest {
     @Size(min = 3, max = 3, message = "Currency must be a 3-letter ISO code")
     private String currency;
 
+    // Optional user-specified exchange rate to the group's base currency
+    // (e.g. from credit card bill). If omitted, the system resolves it automatically.
+    @DecimalMin(value = "0.000001", message = "Exchange rate must be positive")
+    private BigDecimal exchangeRate;
+
     private String category;
 
     @NotNull(message = "Expense date is required")

@@ -12,6 +12,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -24,6 +25,7 @@ public class RecurringExpenseGenerationService {
     private final ExpenseRepository expenseRepository;
     private final GroupMembershipRepository membershipRepository;
     private final SplitCalculationService splitCalculationService;
+    private final ExchangeRateService exchangeRateService;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -64,10 +66,24 @@ public class RecurringExpenseGenerationService {
                 })
                 .toList();
 
-        List<SplitCalculationService.ComputedSplit> computed =
+        String templateCurrency = template.getCurrency().trim().toUpperCase();
+        String groupBaseCurrency = template.getGroup().getCurrency().trim().toUpperCase();
+
+        BigDecimal exchangeRate = exchangeRateService.resolveRate(
+                templateCurrency,
+                groupBaseCurrency,
+                today,
+                null);
+
+        BigDecimal baseCurrencyAmount = exchangeRateService.convertWithRate(template.getAmount(), exchangeRate);
+
+        List<SplitCalculationService.ComputedSplit> computedOriginal =
                 splitCalculationService.compute(template.getAmount(), SplitType.EQUAL, inputs);
 
-        ExpenseStatus status = template.getAmount().compareTo(template.getGroup().getApprovalThreshold()) > 0
+        List<SplitCalculationService.ComputedSplit> computedBase =
+                splitCalculationService.compute(baseCurrencyAmount, SplitType.EQUAL, inputs);
+
+        ExpenseStatus status = baseCurrencyAmount.compareTo(template.getGroup().getApprovalThreshold()) > 0
                 ? ExpenseStatus.PENDING_APPROVAL
                 : ExpenseStatus.APPROVED;
 
@@ -76,23 +92,29 @@ public class RecurringExpenseGenerationService {
                 .paidBy(template.getPaidBy())
                 .description(template.getDescription())
                 .amount(template.getAmount())
-                .currency(template.getCurrency())
+                .currency(templateCurrency)
+                .exchangeRate(exchangeRate)
+                .baseCurrencyAmount(baseCurrencyAmount)
                 .category(template.getCategory())
                 .expenseDate(today)
                 .splitType(SplitType.EQUAL)
                 .status(status)
                 .build();
 
-        for (SplitCalculationService.ComputedSplit c : computed) {
+        for (int i = 0; i < computedOriginal.size(); i++) {
+            SplitCalculationService.ComputedSplit cOrig = computedOriginal.get(i);
+            SplitCalculationService.ComputedSplit cBase = computedBase.get(i);
+
             User user = activeMembers.stream()
                     .map(GroupMembership::getUser)
-                    .filter(u -> u.getId().equals(c.userId()))
+                    .filter(u -> u.getId().equals(cOrig.userId()))
                     .findFirst()
                     .orElseThrow();
             expense.addSplit(ExpenseSplit.builder()
                     .user(user)
-                    .shareAmount(c.shareAmount())
-                    .sharePercentage(c.sharePercentage())
+                    .shareAmount(cOrig.shareAmount())
+                    .baseCurrencyShareAmount(cBase.shareAmount())
+                    .sharePercentage(cOrig.sharePercentage())
                     .build());
         }
 
@@ -101,8 +123,12 @@ public class RecurringExpenseGenerationService {
         template.setLastGeneratedAt(today);
         templateRepository.save(template);
 
+        String convertedInfo = !templateCurrency.equalsIgnoreCase(groupBaseCurrency)
+                ? " ~ " + groupBaseCurrency + " " + baseCurrencyAmount
+                : "";
+
         notifyGroup(groupId, "Recurring expense \"" + template.getDescription() + "\" ("
-                + template.getCurrency() + " " + template.getAmount() + ") was auto-generated for this month.");
+                + template.getCurrency() + " " + template.getAmount() + convertedInfo + ") was auto-generated for this month.");
 
         if (status == ExpenseStatus.PENDING_APPROVAL) {
             eventPublisher.publishEvent(new NotificationEvent(paidByUserId,

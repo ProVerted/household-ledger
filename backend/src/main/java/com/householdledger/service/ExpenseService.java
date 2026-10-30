@@ -2,11 +2,11 @@ package com.householdledger.service;
 
 import com.householdledger.dto.*;
 import com.householdledger.entity.*;
+import com.householdledger.event.NotificationEvent;
 import com.householdledger.repository.ExpenseRepository;
 import com.householdledger.repository.GroupMembershipRepository;
 import com.householdledger.repository.GroupRepository;
 import com.householdledger.repository.UserRepository;
-import com.householdledger.event.NotificationEvent;
 import com.householdledger.security.GroupContext;
 import com.householdledger.security.SecurityUtils;
 import jakarta.persistence.OptimisticLockException;
@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,7 @@ public class ExpenseService {
     private final GroupRepository groupRepository;
     private final GroupMembershipRepository membershipRepository;
     private final SplitCalculationService splitCalculationService;
+    private final ExchangeRateService exchangeRateService;
     private final GroupContext groupContext;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -48,10 +50,19 @@ public class ExpenseService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
 
-        // Expenses above the group's threshold need sign-off before they count
-        // toward balances; everything at or below it is auto-approved so small,
-        // routine expenses don't create needless approval friction.
-        ExpenseStatus status = request.getAmount().compareTo(group.getApprovalThreshold()) > 0
+        String expenseCurrency = request.getCurrency().trim().toUpperCase();
+        String groupBaseCurrency = group.getCurrency().trim().toUpperCase();
+
+        BigDecimal exchangeRate = exchangeRateService.resolveRate(
+                expenseCurrency,
+                groupBaseCurrency,
+                request.getExpenseDate(),
+                request.getExchangeRate());
+
+        BigDecimal baseCurrencyAmount = exchangeRateService.convertWithRate(request.getAmount(), exchangeRate);
+
+        // Compare against threshold in the group's base currency
+        ExpenseStatus status = baseCurrencyAmount.compareTo(group.getApprovalThreshold()) > 0
                 ? ExpenseStatus.PENDING_APPROVAL
                 : ExpenseStatus.APPROVED;
 
@@ -60,14 +71,16 @@ public class ExpenseService {
                 .paidBy(paidBy)
                 .description(request.getDescription())
                 .amount(request.getAmount())
-                .currency(request.getCurrency().toUpperCase())
+                .currency(expenseCurrency)
+                .exchangeRate(exchangeRate)
+                .baseCurrencyAmount(baseCurrencyAmount)
                 .category(request.getCategory())
                 .expenseDate(request.getExpenseDate())
                 .splitType(request.getSplitType())
                 .status(status)
                 .build();
 
-        applySplits(expense, request.getAmount(), request.getSplitType(), request.getSplits());
+        applySplits(expense, request.getAmount(), baseCurrencyAmount, request.getSplitType(), request.getSplits());
 
         expense = expenseRepository.save(expense);
 
@@ -108,11 +121,13 @@ public class ExpenseService {
         return toResponse(expense);
     }
 
-    // Notifies whoever can actually act on this - OWNER/TREASURER members -
-    // rather than the whole group, since everyone else has nothing to do here.
     private void notifyApprovers(Long groupId, Expense expense) {
+        String convertedPreview = !expense.getCurrency().equalsIgnoreCase(expense.getGroup().getCurrency())
+                ? " ~ " + expense.getGroup().getCurrency() + " " + expense.getBaseCurrencyAmount()
+                : "";
+
         String message = expense.getPaidBy().getName() + "'s expense \"" + expense.getDescription()
-                + "\" (" + expense.getCurrency() + " " + expense.getAmount() + ") needs your approval.";
+                + "\" (" + expense.getCurrency() + " " + expense.getAmount() + convertedPreview + ") needs your approval.";
 
         membershipRepository.findByGroupIdAndActiveTrue(groupId).stream()
                 .filter(m -> m.getRole() == GroupRole.OWNER || m.getRole() == GroupRole.TREASURER)
@@ -135,12 +150,6 @@ public class ExpenseService {
     public ExpenseResponse updateExpense(Long expenseId, UpdateExpenseRequest request) {
         Expense expense = findInActiveGroup(expenseId);
 
-        // Optimistic lock check: the client must present the version it last read.
-        // If someone else edited (and saved) this expense in the meantime, the
-        // version on the row has already moved on. JPA's own @Version check at
-        // flush time would also catch a mismatch, but checking explicitly here
-        // lets us return a clean 409 with a clear message rather than a raw
-        // persistence exception leaking to the client.
         if (!expense.getVersion().equals(request.getVersion())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -156,16 +165,29 @@ public class ExpenseService {
         User paidBy = userRepository.findById(paidByUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "paidByUserId not found"));
 
+        String expenseCurrency = request.getCurrency().trim().toUpperCase();
+        String groupBaseCurrency = expense.getGroup().getCurrency().trim().toUpperCase();
+
+        BigDecimal exchangeRate = exchangeRateService.resolveRate(
+                expenseCurrency,
+                groupBaseCurrency,
+                request.getExpenseDate(),
+                request.getExchangeRate());
+
+        BigDecimal baseCurrencyAmount = exchangeRateService.convertWithRate(request.getAmount(), exchangeRate);
+
         expense.setDescription(request.getDescription());
         expense.setAmount(request.getAmount());
-        expense.setCurrency(request.getCurrency().toUpperCase());
+        expense.setCurrency(expenseCurrency);
+        expense.setExchangeRate(exchangeRate);
+        expense.setBaseCurrencyAmount(baseCurrencyAmount);
         expense.setCategory(request.getCategory());
         expense.setExpenseDate(request.getExpenseDate());
         expense.setSplitType(request.getSplitType());
         expense.setPaidBy(paidBy);
 
         expense.clearSplits();
-        applySplits(expense, request.getAmount(), request.getSplitType(), request.getSplits());
+        applySplits(expense, request.getAmount(), baseCurrencyAmount, request.getSplitType(), request.getSplits());
 
         try {
             expense = expenseRepository.save(expense);
@@ -178,20 +200,32 @@ public class ExpenseService {
         return toResponse(expense);
     }
 
-    private void applySplits(Expense expense, java.math.BigDecimal amount, SplitType splitType, List<SplitInput> inputs) {
-        List<SplitCalculationService.ComputedSplit> computed =
+    private void applySplits(
+            Expense expense,
+            BigDecimal amount,
+            BigDecimal baseCurrencyAmount,
+            SplitType splitType,
+            List<SplitInput> inputs) {
+        List<SplitCalculationService.ComputedSplit> computedOriginal =
                 splitCalculationService.compute(amount, splitType, inputs);
 
+        List<SplitCalculationService.ComputedSplit> computedBase =
+                splitCalculationService.compute(baseCurrencyAmount, splitType, inputs);
+
         Map<Long, User> userCache = new HashMap<>();
-        for (SplitCalculationService.ComputedSplit c : computed) {
-            User user = userCache.computeIfAbsent(c.userId(), id ->
+        for (int i = 0; i < computedOriginal.size(); i++) {
+            SplitCalculationService.ComputedSplit cOriginal = computedOriginal.get(i);
+            SplitCalculationService.ComputedSplit cBase = computedBase.get(i);
+
+            User user = userCache.computeIfAbsent(cOriginal.userId(), id ->
                     userRepository.findById(id)
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Split user not found: " + id)));
 
             ExpenseSplit split = ExpenseSplit.builder()
                     .user(user)
-                    .shareAmount(c.shareAmount())
-                    .sharePercentage(c.sharePercentage())
+                    .shareAmount(cOriginal.shareAmount())
+                    .baseCurrencyShareAmount(cBase.shareAmount())
+                    .sharePercentage(cOriginal.sharePercentage())
                     .build();
             expense.addSplit(split);
         }
@@ -212,9 +246,6 @@ public class ExpenseService {
         Expense expense = expenseRepository.findById(expenseId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Expense not found"));
 
-        // Defense in depth: GroupContextFilter already verified the caller is a
-        // member of the group in the URL, but we still confirm this specific
-        // expense actually belongs to that group before returning/mutating it.
         if (!expense.getGroup().getId().equals(groupId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Expense not found");
         }
@@ -222,11 +253,14 @@ public class ExpenseService {
     }
 
     private ExpenseResponse toResponse(Expense expense) {
+        String baseCurrency = expense.getGroup() != null ? expense.getGroup().getCurrency() : expense.getCurrency();
+
         List<ExpenseSplitResponse> splitResponses = expense.getSplits().stream()
                 .map(s -> ExpenseSplitResponse.builder()
                         .userId(s.getUser().getId())
                         .name(s.getUser().getName())
                         .shareAmount(s.getShareAmount())
+                        .baseCurrencyShareAmount(s.getBaseCurrencyShareAmount())
                         .sharePercentage(s.getSharePercentage())
                         .build())
                 .toList();
@@ -236,6 +270,9 @@ public class ExpenseService {
                 .description(expense.getDescription())
                 .amount(expense.getAmount())
                 .currency(expense.getCurrency())
+                .exchangeRate(expense.getExchangeRate())
+                .baseCurrencyAmount(expense.getBaseCurrencyAmount())
+                .baseCurrency(baseCurrency)
                 .category(expense.getCategory())
                 .expenseDate(expense.getExpenseDate())
                 .paidByUserId(expense.getPaidBy().getId())

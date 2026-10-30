@@ -13,5 +13,6 @@ public class ExpenseSplitResponse {
     private Long userId;
     private String name;
     private BigDecimal shareAmount;
+    private BigDecimal baseCurrencyShareAmount;
     private BigDecimal sharePercentage;
 }

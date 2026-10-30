@@ -10,6 +10,7 @@ export interface CreateExpenseRequest {
   description: string;
   amount: number;
   currency: string;
+  exchangeRate?: number | null;
   category: string | null;
   expenseDate: string;
   paidByUserId: number | null;
@@ -25,6 +26,7 @@ export interface ExpenseSplitResponse {
   userId: number;
   name: string;
   shareAmount: number;
+  baseCurrencyShareAmount?: number;
   sharePercentage: number | null;
 }
 
@@ -33,6 +35,9 @@ export interface ExpenseResponse {
   description: string;
   amount: number;
   currency: string;
+  exchangeRate?: number;
+  baseCurrencyAmount?: number;
+  baseCurrency?: string;
   category: string | null;
   expenseDate: string;
   paidByUserId: number;

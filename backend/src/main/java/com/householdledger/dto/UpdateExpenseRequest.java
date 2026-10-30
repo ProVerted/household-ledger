@@ -28,6 +28,9 @@ public class UpdateExpenseRequest {
     @Size(min = 3, max = 3, message = "Currency must be a 3-letter ISO code")
     private String currency;
 
+    @DecimalMin(value = "0.000001", message = "Exchange rate must be positive")
+    private BigDecimal exchangeRate;
+
     private String category;
 
     @NotNull(message = "Expense date is required")
