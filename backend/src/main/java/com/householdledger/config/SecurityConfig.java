@@ -92,8 +92,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Update this once the Angular dev server / prod origin is known.
-        configuration.setAllowedOrigins(List.of("http://localhost:4200"));
+        // Allow local development, Docker, and Nginx reverse proxy origins
+        configuration.setAllowedOriginPatterns(List.of(
+                "http://localhost",
+                "http://localhost:*",
+                "http://127.0.0.1",
+                "http://127.0.0.1:*"
+        ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Group-Id", "X-Retry-Attempt"));
         configuration.setAllowCredentials(true);

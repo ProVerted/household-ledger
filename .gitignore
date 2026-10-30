@@ -17,3 +17,7 @@ npm-debug.log*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# --- Docker & Environment ---
+.env
+!.env.example
